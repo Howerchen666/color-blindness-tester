@@ -20,6 +20,7 @@ A small React + TypeScript web app that checks whether an input palette is **lik
 - React
 - TypeScript
 - Vite
+- JSZip (ZIP image reading)
 - Vitest (unit tests)
 
 ## Run Locally
@@ -53,6 +54,8 @@ The detector expects a JSON array of hex strings, for example:
 
 Both short (`#abc`) and long (`#aabbcc`) hex are accepted and normalized.
 
+You can also upload a `.zip` file of images in the UI. The app extracts dominant colors from the images and auto-fills the input JSON palette.
+
 ## Threshold Notes
 
 - Lower threshold: stricter, fewer palettes pass
@@ -74,6 +77,7 @@ src/
     colorMath.ts
     inputParser.ts
     paletteDetector.ts
+    zipColorExtractor.ts
     colorMath.test.ts
     paletteDetector.test.ts
   App.tsx

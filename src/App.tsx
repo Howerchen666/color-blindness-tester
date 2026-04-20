@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ChangeEvent } from 'react'
 import './App.css'
 import PaletteSwatches from './components/PaletteSwatches'
 import { GOOD_EXAMPLE_PALETTE, POOR_EXAMPLE_PALETTE } from './data/examples'
@@ -6,6 +6,7 @@ import { KNOWN_COLORBLIND_FRIENDLY_PALETTES } from './data/knownPalettes'
 import type { ColorPalette, DetectionResult } from './types'
 import { parseHexArrayInput, parseKnownPalettesInput } from './utils/inputParser'
 import { detectColorblindFriendlyPalette } from './utils/paletteDetector'
+import { extractPaletteFromZip } from './utils/zipColorExtractor'
 
 const DEFAULT_THRESHOLD = 12
 const KNOWN_PALETTES_STORAGE_KEY = 'colorblind-detector-known-palettes'
@@ -58,6 +59,9 @@ function App() {
   const [rawThreshold, setRawThreshold] = useState<string>(String(DEFAULT_THRESHOLD))
   const [error, setError] = useState<string>('')
   const [copyStatus, setCopyStatus] = useState<string>('')
+  const [zipError, setZipError] = useState<string>('')
+  const [zipStatus, setZipStatus] = useState<string>('')
+  const [zipExtractedColors, setZipExtractedColors] = useState<string[]>([])
   const [knownPalettes, setKnownPalettes] = useState<ColorPalette[]>(() => loadStoredKnownPalettes())
   const [rawKnownPalettes, setRawKnownPalettes] = useState<string>(() =>
     loadStoredKnownPalettesEditorText(),
@@ -153,6 +157,41 @@ function App() {
     setKnownPaletteStatus('Known safe palettes reset to defaults.')
   }
 
+  const handleZipUpload = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+
+    if (!file) {
+      return
+    }
+
+    setZipError('')
+    setZipStatus('Processing ZIP file...')
+
+    try {
+      const extraction = await extractPaletteFromZip(file)
+
+      setRawInput(formatExampleJson(extraction.colors))
+      setZipExtractedColors(extraction.colors)
+      setResult(null)
+
+      const skippedMessage =
+        extraction.skippedImages > 0
+          ? ` (${extraction.skippedImages} image(s) skipped due to processing limit).`
+          : '.'
+
+      setZipStatus(
+        `Extracted ${extraction.colors.length} color(s) from ${extraction.processedImages} image(s)${skippedMessage}`,
+      )
+    } catch (caught) {
+      setZipError(
+        caught instanceof Error ? caught.message : 'Failed to extract colors from ZIP file.',
+      )
+      setZipStatus('')
+      setZipExtractedColors([])
+    }
+  }
+
   return (
     <main className="page">
       <header className="card">
@@ -212,6 +251,26 @@ function App() {
 
         {copyStatus && <p className="hint">{copyStatus}</p>}
         {error && <p className="error">{error}</p>}
+
+        <label htmlFor="zip-upload" className="field-label">
+          Or upload a ZIP of images to auto-extract colors:
+        </label>
+        <input
+          id="zip-upload"
+          className="file-input"
+          type="file"
+          accept=".zip,application/zip"
+          onChange={handleZipUpload}
+        />
+        {zipStatus && <p className="success">{zipStatus}</p>}
+        {zipError && <p className="error">{zipError}</p>}
+
+        {zipExtractedColors.length > 0 && (
+          <article className="palette-card zip-preview">
+            <h3>Extracted ZIP Colors</h3>
+            <PaletteSwatches colors={zipExtractedColors} />
+          </article>
+        )}
       </section>
 
       <section className="card">

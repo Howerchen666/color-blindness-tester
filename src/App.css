@@ -77,6 +77,11 @@ code {
   font-size: 0.9rem;
 }
 
+.file-input {
+  margin-top: 0.4rem;
+  margin-bottom: 0.2rem;
+}
+
 button {
   border: 1px solid #a4b8cc;
   background: #f4f7fb;
@@ -110,6 +115,10 @@ button:hover {
   border-radius: 10px;
   padding: 0.75rem;
   background: #fbfdff;
+}
+
+.zip-preview {
+  margin-top: 0.85rem;
 }
 
 .swatch-grid {
