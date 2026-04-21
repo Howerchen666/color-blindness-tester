@@ -18,7 +18,6 @@ export interface ZipPaletteExtraction {
 
 const IMAGE_FILE_REGEX = /\.(png|jpe?g|webp|bmp|gif)$/i
 const MAX_IMAGES_TO_PROCESS = 40
-const COLORS_PER_IMAGE = 3
 const QUANTIZATION_STEP = 32
 
 function rgbToHex(r: number, g: number, b: number): string {
@@ -27,7 +26,7 @@ function rgbToHex(r: number, g: number, b: number): string {
     .join('')}`.toUpperCase()
 }
 
-function extractDominantHexColors(imageData: ImageData, maxColors: number): string[] {
+function extractDominantHexColors(imageData: ImageData): string[] {
   const buckets = new Map<string, ColorBucket>()
   const { data } = imageData
 
@@ -65,7 +64,6 @@ function extractDominantHexColors(imageData: ImageData, maxColors: number): stri
 
   return [...buckets.values()]
     .sort((a, b) => b.count - a.count)
-    .slice(0, maxColors)
     .map((bucket) => {
       const averageR = Math.round(bucket.sumR / bucket.count)
       const averageG = Math.round(bucket.sumG / bucket.count)
@@ -133,7 +131,7 @@ export async function extractPaletteFromZip(file: File): Promise<ZipPaletteExtra
     try {
       const blob = await entry.async('blob')
       const imageData = await blobToImageData(blob)
-      const imageColors = extractDominantHexColors(imageData, COLORS_PER_IMAGE)
+      const imageColors = extractDominantHexColors(imageData)
 
       if (imageColors.length > 0) {
         extractedImages.push({
