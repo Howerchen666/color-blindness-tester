@@ -8,7 +8,10 @@ interface ColorBucket {
 }
 
 export interface ZipPaletteExtraction {
-  colors: string[]
+  images: {
+    fileName: string
+    colors: string[]
+  }[]
   processedImages: number
   skippedImages: number
 }
@@ -16,7 +19,6 @@ export interface ZipPaletteExtraction {
 const IMAGE_FILE_REGEX = /\.(png|jpe?g|webp|bmp|gif)$/i
 const MAX_IMAGES_TO_PROCESS = 40
 const COLORS_PER_IMAGE = 3
-const MAX_OUTPUT_COLORS = 8
 const QUANTIZATION_STEP = 32
 
 function rgbToHex(r: number, g: number, b: number): string {
@@ -124,7 +126,7 @@ export async function extractPaletteFromZip(file: File): Promise<ZipPaletteExtra
   }
 
   const entriesToProcess = imageEntries.slice(0, MAX_IMAGES_TO_PROCESS)
-  const globalColorCounts = new Map<string, number>()
+  const extractedImages: ZipPaletteExtraction['images'] = []
   let processedImages = 0
 
   for (const entry of entriesToProcess) {
@@ -133,11 +135,11 @@ export async function extractPaletteFromZip(file: File): Promise<ZipPaletteExtra
       const imageData = await blobToImageData(blob)
       const imageColors = extractDominantHexColors(imageData, COLORS_PER_IMAGE)
 
-      for (const color of imageColors) {
-        globalColorCounts.set(color, (globalColorCounts.get(color) ?? 0) + 1)
-      }
-
       if (imageColors.length > 0) {
+        extractedImages.push({
+          fileName: entry.name,
+          colors: imageColors,
+        })
         processedImages += 1
       }
     } catch {
@@ -145,17 +147,12 @@ export async function extractPaletteFromZip(file: File): Promise<ZipPaletteExtra
     }
   }
 
-  const colors = [...globalColorCounts.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, MAX_OUTPUT_COLORS)
-    .map(([hex]) => hex)
-
-  if (colors.length === 0) {
+  if (extractedImages.length === 0) {
     throw new Error('Could not extract colors from images in the ZIP.')
   }
 
   return {
-    colors,
+    images: extractedImages,
     processedImages,
     skippedImages: imageEntries.length - entriesToProcess.length,
   }

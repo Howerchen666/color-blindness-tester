@@ -12,6 +12,11 @@ const DEFAULT_THRESHOLD = 12
 const KNOWN_PALETTES_STORAGE_KEY = 'colorblind-detector-known-palettes'
 const KNOWN_PALETTES_EDITOR_STORAGE_KEY = 'colorblind-detector-known-palettes-editor'
 
+interface ZipImagePalette {
+  fileName: string
+  colors: string[]
+}
+
 function formatExampleJson(colors: string[]): string {
   return JSON.stringify(colors, null, 2)
 }
@@ -61,7 +66,7 @@ function App() {
   const [copyStatus, setCopyStatus] = useState<string>('')
   const [zipError, setZipError] = useState<string>('')
   const [zipStatus, setZipStatus] = useState<string>('')
-  const [zipExtractedColors, setZipExtractedColors] = useState<string[]>([])
+  const [zipExtractedPalettes, setZipExtractedPalettes] = useState<ZipImagePalette[]>([])
   const [knownPalettes, setKnownPalettes] = useState<ColorPalette[]>(() => loadStoredKnownPalettes())
   const [rawKnownPalettes, setRawKnownPalettes] = useState<string>(() =>
     loadStoredKnownPalettesEditorText(),
@@ -71,6 +76,26 @@ function App() {
   const [result, setResult] = useState<DetectionResult | null>(null)
 
   const threshold = useMemo(() => Number.parseFloat(rawThreshold), [rawThreshold])
+  const zipResults = useMemo(
+    () =>
+      zipExtractedPalettes
+        .map((imagePalette) => {
+          try {
+            return {
+              fileName: imagePalette.fileName,
+              detection: detectColorblindFriendlyPalette(
+                imagePalette.colors,
+                knownPalettes,
+                threshold,
+              ),
+            }
+          } catch {
+            return null
+          }
+        })
+        .filter((entry): entry is { fileName: string; detection: DetectionResult } => entry !== null),
+    [knownPalettes, threshold, zipExtractedPalettes],
+  )
 
   useEffect(() => {
     try {
@@ -171,8 +196,8 @@ function App() {
     try {
       const extraction = await extractPaletteFromZip(file)
 
-      setRawInput(formatExampleJson(extraction.colors))
-      setZipExtractedColors(extraction.colors)
+      setRawInput(formatExampleJson(extraction.images[0].colors))
+      setZipExtractedPalettes(extraction.images)
       setResult(null)
 
       const skippedMessage =
@@ -181,14 +206,14 @@ function App() {
           : '.'
 
       setZipStatus(
-        `Extracted ${extraction.colors.length} color(s) from ${extraction.processedImages} image(s)${skippedMessage}`,
+        `Extracted palettes for ${extraction.processedImages} image(s)${skippedMessage}`,
       )
     } catch (caught) {
       setZipError(
         caught instanceof Error ? caught.message : 'Failed to extract colors from ZIP file.',
       )
       setZipStatus('')
-      setZipExtractedColors([])
+      setZipExtractedPalettes([])
     }
   }
 
@@ -265,11 +290,15 @@ function App() {
         {zipStatus && <p className="success">{zipStatus}</p>}
         {zipError && <p className="error">{zipError}</p>}
 
-        {zipExtractedColors.length > 0 && (
-          <article className="palette-card zip-preview">
-            <h3>Extracted ZIP Colors</h3>
-            <PaletteSwatches colors={zipExtractedColors} />
-          </article>
+        {zipExtractedPalettes.length > 0 && (
+          <div className="palette-list zip-preview">
+            {zipExtractedPalettes.map((palette) => (
+              <article className="palette-card" key={palette.fileName}>
+                <h3>{palette.fileName}</h3>
+                <PaletteSwatches colors={palette.colors} />
+              </article>
+            ))}
+          </div>
         )}
       </section>
 
@@ -358,6 +387,42 @@ function App() {
               </p>
             )}
           </div>
+        )}
+
+        {zipResults.length > 0 && (
+          <>
+            <h3>ZIP Results By Image</h3>
+            <div className="palette-list">
+              {zipResults.map(({ fileName, detection }) => (
+                <article className="palette-card zip-result-card" key={fileName}>
+                  <div className="status-row">
+                    <strong>{fileName}</strong>
+                    <span
+                      className={
+                        detection.isLikelyColorblindFriendly ? 'status pass' : 'status fail'
+                      }
+                    >
+                      {detection.isLikelyColorblindFriendly ? 'Likely Friendly' : 'Not a Close Match'}
+                    </span>
+                  </div>
+                  <p className="zip-result-summary">
+                    Best Match: <strong>{detection.bestMatch.paletteName}</strong> with score{' '}
+                    <strong>{detection.bestMatch.averageDistance.toFixed(2)}</strong>
+                  </p>
+                  <div className="comparison-grid">
+                    <article className="palette-card">
+                      <h3>Extracted Palette</h3>
+                      <PaletteSwatches colors={detection.inputColors} />
+                    </article>
+                    <article className="palette-card">
+                      <h3>Best Matched Safe Palette</h3>
+                      <PaletteSwatches colors={detection.bestMatch.paletteColors} />
+                    </article>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </>
         )}
       </section>
     </main>

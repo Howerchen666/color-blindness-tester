@@ -121,6 +121,15 @@ button:hover {
   margin-top: 0.85rem;
 }
 
+.zip-result-card {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.zip-result-summary {
+  margin: 0;
+}
+
 .swatch-grid {
   display: flex;
   flex-wrap: wrap;
