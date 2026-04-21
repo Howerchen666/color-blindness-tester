@@ -9,6 +9,7 @@ import { detectColorblindFriendlyPalette } from './utils/paletteDetector'
 import { extractPaletteFromZip } from './utils/zipColorExtractor'
 
 const DEFAULT_THRESHOLD = 12
+const DEFAULT_ZIP_MAX_COLORS = '0'
 const KNOWN_PALETTES_STORAGE_KEY = 'colorblind-detector-known-palettes'
 const KNOWN_PALETTES_EDITOR_STORAGE_KEY = 'colorblind-detector-known-palettes-editor'
 
@@ -67,6 +68,7 @@ function App() {
   const [inputMode, setInputMode] = useState<InputMode>('manual')
   const [error, setError] = useState<string>('')
   const [copyStatus, setCopyStatus] = useState<string>('')
+  const [zipMaxColors, setZipMaxColors] = useState<string>(DEFAULT_ZIP_MAX_COLORS)
   const [zipError, setZipError] = useState<string>('')
   const [zipStatus, setZipStatus] = useState<string>('')
   const [zipExtractedPalettes, setZipExtractedPalettes] = useState<ZipImagePalette[]>([])
@@ -206,7 +208,12 @@ function App() {
     setZipStatus('Processing ZIP file...')
 
     try {
-      const extraction = await extractPaletteFromZip(file)
+      if (!/^\d+$/.test(zipMaxColors.trim())) {
+        throw new Error('Max colors per image must be a non-negative integer. Use 0 for no limit.')
+      }
+
+      const maxColorsPerImage = Number.parseInt(zipMaxColors, 10)
+      const extraction = await extractPaletteFromZip(file, { maxColorsPerImage })
 
       setRawInput(formatExampleJson(extraction.images[0].colors))
       setZipExtractedPalettes(extraction.images)
@@ -218,7 +225,9 @@ function App() {
           : '.'
 
       setZipStatus(
-        `Extracted palettes for ${extraction.processedImages} image(s)${skippedMessage}`,
+        `Extracted palettes for ${extraction.processedImages} image(s) with max colors per image set to ${
+          maxColorsPerImage === 0 ? 'all' : maxColorsPerImage
+        }${skippedMessage}`,
       )
     } catch (caught) {
       setZipError(
@@ -314,6 +323,21 @@ function App() {
 
         {inputMode === 'zip' && (
           <>
+            <div className="controls-row">
+              <label htmlFor="zip-max-colors" className="inline-label">
+                Max Colors Per Image
+              </label>
+              <input
+                id="zip-max-colors"
+                type="number"
+                min="0"
+                step="1"
+                value={zipMaxColors}
+                onChange={(event) => setZipMaxColors(event.target.value)}
+                className="threshold-input"
+              />
+              <span className="hint">Use 0 for no limit.</span>
+            </div>
             <label htmlFor="zip-upload" className="field-label">
               Upload a ZIP of images to extract one palette per image:
             </label>

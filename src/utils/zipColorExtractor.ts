@@ -16,6 +16,10 @@ export interface ZipPaletteExtraction {
   skippedImages: number
 }
 
+interface ZipExtractionOptions {
+  maxColorsPerImage?: number
+}
+
 const IMAGE_FILE_REGEX = /\.(png|jpe?g|webp|bmp|gif)$/i
 const MAX_IMAGES_TO_PROCESS = 40
 const QUANTIZATION_STEP = 32
@@ -26,7 +30,7 @@ function rgbToHex(r: number, g: number, b: number): string {
     .join('')}`.toUpperCase()
 }
 
-function extractDominantHexColors(imageData: ImageData): string[] {
+function extractDominantHexColors(imageData: ImageData, maxColorsPerImage?: number): string[] {
   const buckets = new Map<string, ColorBucket>()
   const { data } = imageData
 
@@ -62,8 +66,13 @@ function extractDominantHexColors(imageData: ImageData): string[] {
     })
   }
 
-  return [...buckets.values()]
-    .sort((a, b) => b.count - a.count)
+  const sortedBuckets = [...buckets.values()].sort((a, b) => b.count - a.count)
+  const limitedBuckets =
+    typeof maxColorsPerImage === 'number' && maxColorsPerImage > 0
+      ? sortedBuckets.slice(0, maxColorsPerImage)
+      : sortedBuckets
+
+  return limitedBuckets
     .map((bucket) => {
       const averageR = Math.round(bucket.sumR / bucket.count)
       const averageG = Math.round(bucket.sumG / bucket.count)
@@ -112,7 +121,19 @@ async function blobToImageData(blob: Blob): Promise<ImageData> {
   return context.getImageData(0, 0, scaled.width, scaled.height)
 }
 
-export async function extractPaletteFromZip(file: File): Promise<ZipPaletteExtraction> {
+export async function extractPaletteFromZip(
+  file: File,
+  options: ZipExtractionOptions = {},
+): Promise<ZipPaletteExtraction> {
+  const { maxColorsPerImage } = options
+
+  if (
+    maxColorsPerImage !== undefined &&
+    (!Number.isInteger(maxColorsPerImage) || maxColorsPerImage < 0)
+  ) {
+    throw new Error('Max colors per image must be a non-negative integer.')
+  }
+
   const zip = await JSZip.loadAsync(file)
 
   const imageEntries = Object.values(zip.files).filter(
@@ -131,7 +152,7 @@ export async function extractPaletteFromZip(file: File): Promise<ZipPaletteExtra
     try {
       const blob = await entry.async('blob')
       const imageData = await blobToImageData(blob)
-      const imageColors = extractDominantHexColors(imageData)
+      const imageColors = extractDominantHexColors(imageData, maxColorsPerImage)
 
       if (imageColors.length > 0) {
         extractedImages.push({
