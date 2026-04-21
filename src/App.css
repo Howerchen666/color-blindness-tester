@@ -46,6 +46,16 @@ code {
   margin-bottom: 0.5rem;
 }
 
+.input-mode-toggle {
+  display: inline-flex;
+  gap: 0.35rem;
+  padding: 0.3rem;
+  margin-bottom: 0.85rem;
+  border: 1px solid #d7e1ec;
+  border-radius: 10px;
+  background: #f7fafc;
+}
+
 .json-input {
   width: 100%;
   border-radius: 8px;
@@ -92,6 +102,25 @@ button {
 
 button:hover {
   background: #e9f0f7;
+}
+
+.toggle-btn {
+  border-color: transparent;
+  background: transparent;
+}
+
+.toggle-btn:hover {
+  background: #e9f0f7;
+}
+
+.toggle-btn.active {
+  background: #0f5da8;
+  color: #ffffff;
+  border-color: #0f5da8;
+}
+
+.toggle-btn.active:hover {
+  background: #0c4b88;
 }
 
 .primary-btn {

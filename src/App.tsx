@@ -17,6 +17,8 @@ interface ZipImagePalette {
   colors: string[]
 }
 
+type InputMode = 'manual' | 'zip'
+
 function formatExampleJson(colors: string[]): string {
   return JSON.stringify(colors, null, 2)
 }
@@ -62,6 +64,7 @@ function loadStoredKnownPalettesEditorText(): string {
 function App() {
   const [rawInput, setRawInput] = useState<string>(formatExampleJson(GOOD_EXAMPLE_PALETTE))
   const [rawThreshold, setRawThreshold] = useState<string>(String(DEFAULT_THRESHOLD))
+  const [inputMode, setInputMode] = useState<InputMode>('manual')
   const [error, setError] = useState<string>('')
   const [copyStatus, setCopyStatus] = useState<string>('')
   const [zipError, setZipError] = useState<string>('')
@@ -182,6 +185,15 @@ function App() {
     setKnownPaletteStatus('Known safe palettes reset to defaults.')
   }
 
+  const switchInputMode = (mode: InputMode) => {
+    setInputMode(mode)
+    setError('')
+    setCopyStatus('')
+    setZipError('')
+    setZipStatus('')
+    setResult(null)
+  }
+
   const handleZipUpload = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     event.target.value = ''
@@ -229,17 +241,24 @@ function App() {
 
       <section className="card">
         <h2>1. Input Palette</h2>
-        <label htmlFor="palette-json" className="field-label">
-          Enter a JSON array of hex colors:
-        </label>
-        <textarea
-          id="palette-json"
-          className="json-input"
-          value={rawInput}
-          onChange={(event) => setRawInput(event.target.value)}
-          rows={8}
-          spellCheck={false}
-        />
+        <div className="input-mode-toggle" role="tablist" aria-label="Input mode">
+          <button
+            type="button"
+            className={inputMode === 'manual' ? 'toggle-btn active' : 'toggle-btn'}
+            onClick={() => switchInputMode('manual')}
+            aria-pressed={inputMode === 'manual'}
+          >
+            Enter Colors
+          </button>
+          <button
+            type="button"
+            className={inputMode === 'zip' ? 'toggle-btn active' : 'toggle-btn'}
+            onClick={() => switchInputMode('zip')}
+            aria-pressed={inputMode === 'zip'}
+          >
+            Upload ZIP
+          </button>
+        </div>
 
         <div className="controls-row">
           <label htmlFor="threshold" className="inline-label">
@@ -259,46 +278,66 @@ function App() {
           </button>
         </div>
 
-        <div className="controls-row examples-row">
-          <button onClick={setGoodExample} type="button">
-            Use Near-Match Example
-          </button>
-          <button onClick={setPoorExample} type="button">
-            Use Poor-Match Example
-          </button>
-          <button onClick={() => copyExample(GOOD_EXAMPLE_PALETTE)} type="button">
-            Copy Near-Match JSON
-          </button>
-          <button onClick={() => copyExample(POOR_EXAMPLE_PALETTE)} type="button">
-            Copy Poor-Match JSON
-          </button>
-        </div>
+        {inputMode === 'manual' && (
+          <>
+            <label htmlFor="palette-json" className="field-label">
+              Enter a JSON array of hex colors:
+            </label>
+            <textarea
+              id="palette-json"
+              className="json-input"
+              value={rawInput}
+              onChange={(event) => setRawInput(event.target.value)}
+              rows={8}
+              spellCheck={false}
+            />
 
-        {copyStatus && <p className="hint">{copyStatus}</p>}
-        {error && <p className="error">{error}</p>}
+            <div className="controls-row examples-row">
+              <button onClick={setGoodExample} type="button">
+                Use Near-Match Example
+              </button>
+              <button onClick={setPoorExample} type="button">
+                Use Poor-Match Example
+              </button>
+              <button onClick={() => copyExample(GOOD_EXAMPLE_PALETTE)} type="button">
+                Copy Near-Match JSON
+              </button>
+              <button onClick={() => copyExample(POOR_EXAMPLE_PALETTE)} type="button">
+                Copy Poor-Match JSON
+              </button>
+            </div>
 
-        <label htmlFor="zip-upload" className="field-label">
-          Or upload a ZIP of images to auto-extract colors:
-        </label>
-        <input
-          id="zip-upload"
-          className="file-input"
-          type="file"
-          accept=".zip,application/zip"
-          onChange={handleZipUpload}
-        />
-        {zipStatus && <p className="success">{zipStatus}</p>}
-        {zipError && <p className="error">{zipError}</p>}
+            {copyStatus && <p className="hint">{copyStatus}</p>}
+            {error && <p className="error">{error}</p>}
+          </>
+        )}
 
-        {zipExtractedPalettes.length > 0 && (
-          <div className="palette-list zip-preview">
-            {zipExtractedPalettes.map((palette) => (
-              <article className="palette-card" key={palette.fileName}>
-                <h3>{palette.fileName}</h3>
-                <PaletteSwatches colors={palette.colors} />
-              </article>
-            ))}
-          </div>
+        {inputMode === 'zip' && (
+          <>
+            <label htmlFor="zip-upload" className="field-label">
+              Upload a ZIP of images to extract one palette per image:
+            </label>
+            <input
+              id="zip-upload"
+              className="file-input"
+              type="file"
+              accept=".zip,application/zip"
+              onChange={handleZipUpload}
+            />
+            {zipStatus && <p className="success">{zipStatus}</p>}
+            {zipError && <p className="error">{zipError}</p>}
+
+            {zipExtractedPalettes.length > 0 && (
+              <div className="palette-list zip-preview">
+                {zipExtractedPalettes.map((palette) => (
+                  <article className="palette-card" key={palette.fileName}>
+                    <h3>{palette.fileName}</h3>
+                    <PaletteSwatches colors={palette.colors} />
+                  </article>
+                ))}
+              </div>
+            )}
+          </>
         )}
       </section>
 
@@ -343,9 +382,14 @@ function App() {
 
       <section className="card">
         <h2>3. Results</h2>
-        {!result && <p className="hint">Run detection to see pass/fail status and palette ranking.</p>}
+        {inputMode === 'manual' && !result && (
+          <p className="hint">Run detection to see pass/fail status and palette ranking.</p>
+        )}
+        {inputMode === 'zip' && zipResults.length === 0 && (
+          <p className="hint">Upload a ZIP to see one detection result per extracted image.</p>
+        )}
 
-        {result && (
+        {inputMode === 'manual' && result && (
           <div className="results-wrap">
             <div className="status-row">
               <span className={result.isLikelyColorblindFriendly ? 'status pass' : 'status fail'}>
@@ -389,7 +433,7 @@ function App() {
           </div>
         )}
 
-        {zipResults.length > 0 && (
+        {inputMode === 'zip' && zipResults.length > 0 && (
           <>
             <h3>ZIP Results By Image</h3>
             <div className="palette-list">
