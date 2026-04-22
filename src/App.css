@@ -180,14 +180,14 @@ button:hover {
 }
 
 .zip-batch-preview-cell {
-  width: 112px;
+  width: 196px;
   padding: 0.4rem 0.5rem;
 }
 
 .zip-batch-thumb {
   display: block;
-  width: 104px;
-  height: 72px;
+  width: clamp(140px, 16vw, 188px);
+  height: clamp(96px, 9vw, 132px);
   object-fit: contain;
   border-radius: 6px;
   border: 1px solid #c5d2e0;
@@ -198,8 +198,8 @@ button:hover {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 104px;
-  height: 72px;
+  width: clamp(140px, 16vw, 188px);
+  height: clamp(96px, 9vw, 132px);
   border-radius: 6px;
   border: 1px dashed #c5d2e0;
   background: #f8fafc;
