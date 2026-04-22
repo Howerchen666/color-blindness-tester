@@ -39,6 +39,20 @@ const IMAGE_FILE_REGEX = /\.(png|jpe?g|webp|bmp|gif)$/i
 const MAX_IMAGES_TO_PROCESS = 40
 const QUANTIZATION_STEP = 32
 
+/** macOS archives often include __MACOSX/ and AppleDouble `._*` files next to real images. */
+function isMacOsZipMetadataPath(entryName: string): boolean {
+  const normalized = entryName.replace(/\\/g, '/')
+  if (normalized.includes('__MACOSX/')) {
+    return true
+  }
+  const baseName = normalized.split('/').pop() ?? normalized
+  return baseName.startsWith('._')
+}
+
+function isZipImageFileEntry(entryName: string): boolean {
+  return IMAGE_FILE_REGEX.test(entryName) && !isMacOsZipMetadataPath(entryName)
+}
+
 function rgbToHex(r: number, g: number, b: number): string {
   return `#${[r, g, b]
     .map((value) => Math.max(0, Math.min(255, value)).toString(16).padStart(2, '0'))
@@ -143,7 +157,7 @@ export async function listZipImagesForBatchUi(file: File): Promise<{
   const zip = await JSZip.loadAsync(file)
 
   const imageEntries = Object.values(zip.files).filter(
-    (entry) => !entry.dir && IMAGE_FILE_REGEX.test(entry.name),
+    (entry) => !entry.dir && isZipImageFileEntry(entry.name),
   )
 
   if (imageEntries.length === 0) {
@@ -190,7 +204,7 @@ export async function extractPaletteFromZip(
   const zip = await JSZip.loadAsync(file)
 
   const imageEntries = Object.values(zip.files).filter(
-    (entry) => !entry.dir && IMAGE_FILE_REGEX.test(entry.name),
+    (entry) => !entry.dir && isZipImageFileEntry(entry.name),
   )
 
   if (imageEntries.length === 0) {
