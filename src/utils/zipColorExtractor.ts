@@ -39,6 +39,20 @@ const IMAGE_FILE_REGEX = /\.(png|jpe?g|webp|bmp|gif)$/i
 const MAX_IMAGES_TO_PROCESS = 40
 const QUANTIZATION_STEP = 32
 
+/**
+ * Pixels this bright in every channel are treated as white / off-white figure backgrounds
+ * and excluded from dominant-color buckets (anti-aliased edges stay included until very light).
+ */
+const NEAR_WHITE_BACKGROUND_MIN_RGB = 240
+
+function isNearWhiteBackgroundPixel(r: number, g: number, b: number): boolean {
+  return (
+    r >= NEAR_WHITE_BACKGROUND_MIN_RGB &&
+    g >= NEAR_WHITE_BACKGROUND_MIN_RGB &&
+    b >= NEAR_WHITE_BACKGROUND_MIN_RGB
+  )
+}
+
 /** macOS archives often include __MACOSX/ and AppleDouble `._*` files next to real images. */
 function isMacOsZipMetadataPath(entryName: string): boolean {
   const normalized = entryName.replace(/\\/g, '/')
@@ -72,6 +86,10 @@ function extractDominantHexColors(imageData: ImageData, maxColorsPerImage?: numb
     const r = data[index]
     const g = data[index + 1]
     const b = data[index + 2]
+
+    if (isNearWhiteBackgroundPixel(r, g, b)) {
+      continue
+    }
 
     const quantizedR = Math.floor(r / QUANTIZATION_STEP)
     const quantizedG = Math.floor(g / QUANTIZATION_STEP)
