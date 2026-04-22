@@ -6,7 +6,7 @@ import { KNOWN_COLORBLIND_FRIENDLY_PALETTES } from './data/knownPalettes'
 import type { ColorPalette, DetectionResult } from './types'
 import { parseHexArrayInput, parseKnownPalettesInput } from './utils/inputParser'
 import { detectColorblindFriendlyPalette } from './utils/paletteDetector'
-import { extractPaletteFromZip } from './utils/zipColorExtractor'
+import { extractPaletteFromZip, listZipImagesForBatchUi } from './utils/zipColorExtractor'
 
 const DEFAULT_THRESHOLD = 12
 const DEFAULT_ZIP_MAX_COLORS = '0'
@@ -16,6 +16,11 @@ const KNOWN_PALETTES_EDITOR_STORAGE_KEY = 'colorblind-detector-known-palettes-ed
 interface ZipImagePalette {
   fileName: string
   colors: string[]
+}
+
+interface ZipBatchRow {
+  fileName: string
+  maxColors: string
 }
 
 type InputMode = 'manual' | 'zip'
@@ -71,6 +76,9 @@ function App() {
   const [zipMaxColors, setZipMaxColors] = useState<string>(DEFAULT_ZIP_MAX_COLORS)
   const [zipError, setZipError] = useState<string>('')
   const [zipStatus, setZipStatus] = useState<string>('')
+  const [pendingZipFile, setPendingZipFile] = useState<File | null>(null)
+  const [zipImageRows, setZipImageRows] = useState<ZipBatchRow[]>([])
+  const [zipPreviewUrls, setZipPreviewUrls] = useState<Record<string, string>>({})
   const [zipExtractedPalettes, setZipExtractedPalettes] = useState<ZipImagePalette[]>([])
   const [knownPalettes, setKnownPalettes] = useState<ColorPalette[]>(() => loadStoredKnownPalettes())
   const [rawKnownPalettes, setRawKnownPalettes] = useState<string>(() =>
@@ -120,6 +128,15 @@ function App() {
       // Ignore storage failures and keep app behavior in-memory.
     }
   }, [rawKnownPalettes])
+
+  const revokeZipPreviewUrls = () => {
+    setZipPreviewUrls((prev) => {
+      for (const url of Object.values(prev)) {
+        URL.revokeObjectURL(url)
+      }
+      return {}
+    })
+  }
 
   const runDetection = () => {
     setError('')
@@ -194,9 +211,31 @@ function App() {
     setZipError('')
     setZipStatus('')
     setResult(null)
+    if (mode !== 'zip') {
+      revokeZipPreviewUrls()
+      setPendingZipFile(null)
+      setZipImageRows([])
+      setZipExtractedPalettes([])
+    }
   }
 
-  const handleZipUpload = async (event: ChangeEvent<HTMLInputElement>) => {
+  const applyDefaultMaxColorsToAllZipRows = () => {
+    const trimmed = zipMaxColors.trim()
+    if (!/^\d+$/.test(trimmed)) {
+      setZipError('Default max colors must be a non-negative integer. Use 0 for no limit.')
+      return
+    }
+    setZipError('')
+    setZipImageRows((rows) => rows.map((row) => ({ ...row, maxColors: trimmed })))
+  }
+
+  const updateZipRowMaxColors = (fileName: string, value: string) => {
+    setZipImageRows((rows) =>
+      rows.map((row) => (row.fileName === fileName ? { ...row, maxColors: value } : row)),
+    )
+  }
+
+  const handleZipFileChosen = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     event.target.value = ''
 
@@ -205,15 +244,79 @@ function App() {
     }
 
     setZipError('')
-    setZipStatus('Processing ZIP file...')
+    setZipStatus('Reading ZIP and loading previews...')
+    setZipExtractedPalettes([])
+    setResult(null)
+    setPendingZipFile(null)
+    setZipImageRows([])
+    revokeZipPreviewUrls()
 
     try {
       if (!/^\d+$/.test(zipMaxColors.trim())) {
-        throw new Error('Max colors per image must be a non-negative integer. Use 0 for no limit.')
+        throw new Error('Default max colors must be a non-negative integer. Use 0 for no limit.')
       }
 
-      const maxColorsPerImage = Number.parseInt(zipMaxColors, 10)
-      const extraction = await extractPaletteFromZip(file, { maxColorsPerImage })
+      const defaultMax = zipMaxColors.trim()
+      const { images, skippedImageCount } = await listZipImagesForBatchUi(file)
+
+      const nextPreviewUrls: Record<string, string> = {}
+      for (const { fileName, previewBlob } of images) {
+        if (previewBlob) {
+          nextPreviewUrls[fileName] = URL.createObjectURL(previewBlob)
+        }
+      }
+
+      setPendingZipFile(file)
+      setZipPreviewUrls(nextPreviewUrls)
+      setZipImageRows(images.map(({ fileName }) => ({ fileName, maxColors: defaultMax })))
+
+      const skippedMessage =
+        skippedImageCount > 0
+          ? ` (${skippedImageCount} additional image(s) not listed due to the ${images.length}-image batch limit).`
+          : ''
+
+      setZipStatus(
+        `Found ${images.length} image(s). Adjust colors to recognize per screenshot, then click Extract palettes.${skippedMessage}`,
+      )
+    } catch (caught) {
+      setZipError(
+        caught instanceof Error ? caught.message : 'Failed to read image list from ZIP file.',
+      )
+      setZipStatus('')
+    }
+  }
+
+  const handleExtractZipPalettes = async () => {
+    if (!pendingZipFile) {
+      setZipError('Choose a ZIP file first.')
+      return
+    }
+
+    setZipError('')
+    setZipStatus('Extracting palettes from images...')
+
+    try {
+      if (!/^\d+$/.test(zipMaxColors.trim())) {
+        throw new Error('Default max colors must be a non-negative integer. Use 0 for no limit.')
+      }
+
+      const maxColorsPerImage = Number.parseInt(zipMaxColors.trim(), 10)
+      const maxColorsByImage: Record<string, number> = {}
+
+      for (const row of zipImageRows) {
+        const trimmed = row.maxColors.trim()
+        if (!/^\d+$/.test(trimmed)) {
+          throw new Error(
+            `Max colors for "${row.fileName}" must be a non-negative integer. Use 0 for no limit.`,
+          )
+        }
+        maxColorsByImage[row.fileName] = Number.parseInt(trimmed, 10)
+      }
+
+      const extraction = await extractPaletteFromZip(pendingZipFile, {
+        maxColorsPerImage,
+        maxColorsByImage,
+      })
 
       setRawInput(formatExampleJson(extraction.images[0].colors))
       setZipExtractedPalettes(extraction.images)
@@ -224,11 +327,7 @@ function App() {
           ? ` (${extraction.skippedImages} image(s) skipped due to processing limit).`
           : '.'
 
-      setZipStatus(
-        `Extracted palettes for ${extraction.processedImages} image(s) with max colors per image set to ${
-          maxColorsPerImage === 0 ? 'all' : maxColorsPerImage
-        }${skippedMessage}`,
-      )
+      setZipStatus(`Extracted palettes for ${extraction.processedImages} image(s).${skippedMessage}`)
     } catch (caught) {
       setZipError(
         caught instanceof Error ? caught.message : 'Failed to extract colors from ZIP file.',
@@ -325,7 +424,7 @@ function App() {
           <>
             <div className="controls-row">
               <label htmlFor="zip-max-colors" className="inline-label">
-                Max Colors Per Image
+                Default max colors
               </label>
               <input
                 id="zip-max-colors"
@@ -336,18 +435,76 @@ function App() {
                 onChange={(event) => setZipMaxColors(event.target.value)}
                 className="threshold-input"
               />
-              <span className="hint">Use 0 for no limit.</span>
+              <span className="hint">Used as the starting value for each image (0 = no limit).</span>
             </div>
             <label htmlFor="zip-upload" className="field-label">
-              Upload a ZIP of images to extract one palette per image:
+              Upload a ZIP of images (up to 40). You can set max colors per file before extracting:
             </label>
             <input
               id="zip-upload"
               className="file-input"
               type="file"
               accept=".zip,application/zip"
-              onChange={handleZipUpload}
+              onChange={handleZipFileChosen}
             />
+            {zipImageRows.length > 0 && (
+              <div className="zip-batch-panel">
+                <div className="controls-row zip-batch-actions">
+                  <button type="button" onClick={applyDefaultMaxColorsToAllZipRows}>
+                    Apply default max to all rows
+                  </button>
+                  <button type="button" className="primary-btn" onClick={handleExtractZipPalettes}>
+                    Extract palettes
+                  </button>
+                </div>
+                <table className="zip-batch-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">Preview</th>
+                      <th scope="col">File in ZIP</th>
+                      <th scope="col">Colors to recognize</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {zipImageRows.map((row) => {
+                      const previewSrc = zipPreviewUrls[row.fileName]
+                      return (
+                        <tr key={row.fileName}>
+                          <td className="zip-batch-preview-cell">
+                            {previewSrc ? (
+                              <img
+                                src={previewSrc}
+                                alt=""
+                                className="zip-batch-thumb"
+                                loading="lazy"
+                              />
+                            ) : (
+                              <div className="zip-batch-thumb-placeholder" role="presentation">
+                                <span className="hint">No preview</span>
+                              </div>
+                            )}
+                          </td>
+                          <td className="zip-batch-name">{row.fileName}</td>
+                          <td>
+                            <input
+                              type="number"
+                              min="0"
+                              step="1"
+                              className="threshold-input zip-batch-max-input"
+                              aria-label={`Colors to recognize for ${row.fileName}`}
+                              value={row.maxColors}
+                              onChange={(event) =>
+                                updateZipRowMaxColors(row.fileName, event.target.value)
+                              }
+                            />
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
             {zipStatus && <p className="success">{zipStatus}</p>}
             {zipError && <p className="error">{zipError}</p>}
 
@@ -410,7 +567,9 @@ function App() {
           <p className="hint">Run detection to see pass/fail status and palette ranking.</p>
         )}
         {inputMode === 'zip' && zipResults.length === 0 && (
-          <p className="hint">Upload a ZIP to see one detection result per extracted image.</p>
+          <p className="hint">
+            After you extract palettes from a ZIP, you will see one detection result per image here.
+          </p>
         )}
 
         {inputMode === 'manual' && result && (

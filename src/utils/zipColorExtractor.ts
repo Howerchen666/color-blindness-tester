@@ -17,7 +17,22 @@ export interface ZipPaletteExtraction {
 }
 
 interface ZipExtractionOptions {
+  /** Used when a file has no entry in maxColorsByImage. */
   maxColorsPerImage?: number
+  /** Optional per-zip-entry limits; keys must match JSZip entry names exactly. */
+  maxColorsByImage?: Record<string, number>
+}
+
+export interface ZipBatchListImage {
+  fileName: string
+  /** Present when the entry could be read as a blob (used for UI preview). */
+  previewBlob: Blob | null
+}
+
+function assertNonNegativeIntegerMaxColors(value: number, context: string): void {
+  if (!Number.isInteger(value) || value < 0) {
+    throw new Error(`${context} must be a non-negative integer.`)
+  }
 }
 
 const IMAGE_FILE_REGEX = /\.(png|jpe?g|webp|bmp|gif)$/i
@@ -121,17 +136,55 @@ async function blobToImageData(blob: Blob): Promise<ImageData> {
   return context.getImageData(0, 0, scaled.width, scaled.height)
 }
 
+export async function listZipImagesForBatchUi(file: File): Promise<{
+  images: ZipBatchListImage[]
+  skippedImageCount: number
+}> {
+  const zip = await JSZip.loadAsync(file)
+
+  const imageEntries = Object.values(zip.files).filter(
+    (entry) => !entry.dir && IMAGE_FILE_REGEX.test(entry.name),
+  )
+
+  if (imageEntries.length === 0) {
+    throw new Error('No supported image files were found in the ZIP.')
+  }
+
+  const entriesToProcess = imageEntries.slice(0, MAX_IMAGES_TO_PROCESS)
+  const images: ZipBatchListImage[] = []
+
+  for (const entry of entriesToProcess) {
+    try {
+      const previewBlob = await entry.async('blob')
+      images.push({ fileName: entry.name, previewBlob })
+    } catch {
+      images.push({ fileName: entry.name, previewBlob: null })
+    }
+  }
+
+  return {
+    images,
+    skippedImageCount: imageEntries.length - entriesToProcess.length,
+  }
+}
+
 export async function extractPaletteFromZip(
   file: File,
   options: ZipExtractionOptions = {},
 ): Promise<ZipPaletteExtraction> {
-  const { maxColorsPerImage } = options
+  const { maxColorsPerImage, maxColorsByImage } = options
 
-  if (
-    maxColorsPerImage !== undefined &&
-    (!Number.isInteger(maxColorsPerImage) || maxColorsPerImage < 0)
-  ) {
-    throw new Error('Max colors per image must be a non-negative integer.')
+  if (maxColorsPerImage !== undefined) {
+    assertNonNegativeIntegerMaxColors(maxColorsPerImage, 'Default max colors per image')
+  }
+
+  if (maxColorsByImage) {
+    for (const [fileName, limit] of Object.entries(maxColorsByImage)) {
+      assertNonNegativeIntegerMaxColors(
+        limit,
+        `Max colors for image "${fileName}"`,
+      )
+    }
   }
 
   const zip = await JSZip.loadAsync(file)
@@ -152,7 +205,11 @@ export async function extractPaletteFromZip(
     try {
       const blob = await entry.async('blob')
       const imageData = await blobToImageData(blob)
-      const imageColors = extractDominantHexColors(imageData, maxColorsPerImage)
+      const limitForEntry =
+        maxColorsByImage && Object.prototype.hasOwnProperty.call(maxColorsByImage, entry.name)
+          ? maxColorsByImage[entry.name]
+          : maxColorsPerImage
+      const imageColors = extractDominantHexColors(imageData, limitForEntry)
 
       if (imageColors.length > 0) {
         extractedImages.push({

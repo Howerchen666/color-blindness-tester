@@ -150,6 +150,90 @@ button:hover {
   margin-top: 0.85rem;
 }
 
+.zip-batch-panel {
+  margin-top: 0.85rem;
+  display: grid;
+  gap: 0.65rem;
+  overflow-x: auto;
+}
+
+.zip-batch-actions {
+  margin-top: 0;
+}
+
+.zip-batch-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+  border: 1px solid #d7e1ec;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #fbfdff;
+}
+
+.zip-batch-table th,
+.zip-batch-table td {
+  padding: 0.5rem 0.65rem;
+  border-bottom: 1px solid #e8eef5;
+  text-align: left;
+  vertical-align: middle;
+}
+
+.zip-batch-preview-cell {
+  width: 112px;
+  padding: 0.4rem 0.5rem;
+}
+
+.zip-batch-thumb {
+  display: block;
+  width: 104px;
+  height: 72px;
+  object-fit: contain;
+  border-radius: 6px;
+  border: 1px solid #c5d2e0;
+  background: #f4f7fb;
+}
+
+.zip-batch-thumb-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 104px;
+  height: 72px;
+  border-radius: 6px;
+  border: 1px dashed #c5d2e0;
+  background: #f8fafc;
+  text-align: center;
+  padding: 0.25rem;
+  box-sizing: border-box;
+}
+
+.zip-batch-thumb-placeholder .hint {
+  font-size: 0.72rem;
+  line-height: 1.2;
+}
+
+.zip-batch-table thead th {
+  background: #f2f6fa;
+  font-weight: 600;
+}
+
+.zip-batch-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.zip-batch-name {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.82rem;
+  word-break: break-all;
+}
+
+.zip-batch-max-input {
+  width: 100%;
+  max-width: 120px;
+  box-sizing: border-box;
+}
+
 .zip-result-card {
   display: grid;
   gap: 0.8rem;
