@@ -40,17 +40,53 @@ const MAX_IMAGES_TO_PROCESS = 40
 const QUANTIZATION_STEP = 32
 
 /**
- * Pixels this bright in every channel are treated as white / off-white figure backgrounds
- * and excluded from dominant-color buckets (anti-aliased edges stay included until very light).
+ * Light, low-chroma pixels (white, cream, paper, light gray UI) typical of figure backgrounds.
+ * Uses brightness + chroma so tinted off-whites like #EFEEEB are excluded, not only #FFFFFF.
  */
-const NEAR_WHITE_BACKGROUND_MIN_RGB = 240
+const BG_LIGHT_MIN_BRIGHTNESS = 226
+const BG_LIGHT_MAX_CHROMA = 22
 
-function isNearWhiteBackgroundPixel(r: number, g: number, b: number): boolean {
-  return (
-    r >= NEAR_WHITE_BACKGROUND_MIN_RGB &&
-    g >= NEAR_WHITE_BACKGROUND_MIN_RGB &&
-    b >= NEAR_WHITE_BACKGROUND_MIN_RGB
-  )
+/** Flat light gray legend / chrome (#CECFCD-ish), without catching saturated mid-tones. */
+const BG_NEUTRAL_MIN_BRIGHTNESS = 196
+const BG_NEUTRAL_MAX_CHROMA = 14
+const BG_NEUTRAL_MIN_CHANNEL = 188
+
+function rgbBrightness(r: number, g: number, b: number): number {
+  return (r + g + b) / 3
+}
+
+function rgbChroma(r: number, g: number, b: number): number {
+  return Math.max(r, g, b) - Math.min(r, g, b)
+}
+
+function isBackgroundLikeRgb(r: number, g: number, b: number): boolean {
+  const bright = rgbBrightness(r, g, b)
+  const chroma = rgbChroma(r, g, b)
+  const minC = Math.min(r, g, b)
+
+  if (bright >= BG_LIGHT_MIN_BRIGHTNESS && chroma <= BG_LIGHT_MAX_CHROMA) {
+    return true
+  }
+
+  if (
+    bright >= BG_NEUTRAL_MIN_BRIGHTNESS &&
+    chroma <= BG_NEUTRAL_MAX_CHROMA &&
+    minC >= BG_NEUTRAL_MIN_CHANNEL
+  ) {
+    return true
+  }
+
+  return false
+}
+
+function parseHexRgb(hex: string): [number, number, number] | null {
+  const normalized = hex.trim().toUpperCase()
+  const match = /^#?([0-9A-F]{6})$/.exec(normalized)
+  if (!match) {
+    return null
+  }
+  const n = Number.parseInt(match[1], 16)
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255]
 }
 
 /** macOS archives often include __MACOSX/ and AppleDouble `._*` files next to real images. */
@@ -87,7 +123,7 @@ function extractDominantHexColors(imageData: ImageData, maxColorsPerImage?: numb
     const g = data[index + 1]
     const b = data[index + 2]
 
-    if (isNearWhiteBackgroundPixel(r, g, b)) {
+    if (isBackgroundLikeRgb(r, g, b)) {
       continue
     }
 
@@ -125,6 +161,13 @@ function extractDominantHexColors(imageData: ImageData, maxColorsPerImage?: numb
       const averageG = Math.round(bucket.sumG / bucket.count)
       const averageB = Math.round(bucket.sumB / bucket.count)
       return rgbToHex(averageR, averageG, averageB)
+    })
+    .filter((hex) => {
+      const rgb = parseHexRgb(hex)
+      if (!rgb) {
+        return true
+      }
+      return !isBackgroundLikeRgb(rgb[0], rgb[1], rgb[2])
     })
 }
 
